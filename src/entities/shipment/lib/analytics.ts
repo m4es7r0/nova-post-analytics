@@ -4,6 +4,10 @@ import type { Shipment, ShipmentStatus } from "../model/types";
 import { getShipments } from "../api/shipment.api";
 import { getDeliveryCost, getDeclaredValue } from "./cost-utils";
 
+const ANALYTICS_CACHE_TTL_MS = 60 * 1000; // 1 min
+const MAX_ANALYTICS_CACHE_ENTRIES = 100;
+const SHIPMENTS_FETCH_CONCURRENCY = 4;
+
 // ============================================================
 // Shipment Analytics Aggregation (server-only)
 // Computes all metrics from shipment data
@@ -107,6 +111,49 @@ export interface AnalyticsFilter {
   apiKey: string;    // per-user API key (required)
 }
 
+interface AnalyticsCacheEntry {
+  expiresAt: number;
+  value: ShipmentAnalytics;
+}
+
+const analyticsCache = new Map<string, AnalyticsCacheEntry>();
+
+function buildAnalyticsCacheKey(
+  filter: AnalyticsFilter,
+  maxPages: number,
+  perPage: number
+): string {
+  return [
+    filter.apiKey,
+    filter.dateFrom || "",
+    filter.dateTo || "",
+    String(maxPages),
+    String(perPage),
+  ].join("|");
+}
+
+function getCachedAnalytics(key: string): ShipmentAnalytics | null {
+  const entry = analyticsCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt < Date.now()) {
+    analyticsCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCachedAnalytics(key: string, value: ShipmentAnalytics): void {
+  analyticsCache.set(key, {
+    expiresAt: Date.now() + ANALYTICS_CACHE_TTL_MS,
+    value,
+  });
+
+  if (analyticsCache.size > MAX_ANALYTICS_CACHE_ENTRIES) {
+    const oldest = analyticsCache.keys().next().value as string | undefined;
+    if (oldest) analyticsCache.delete(oldest);
+  }
+}
+
 /**
  * Fetch all shipments across pages and compute analytics.
  * Fetches up to maxPages pages to avoid excessive API calls.
@@ -117,20 +164,40 @@ export async function computeShipmentAnalytics(
   maxPages: number = 10,
   perPage: number = 100
 ): Promise<ShipmentAnalytics> {
+  const cacheKey = buildAnalyticsCacheKey(filter, maxPages, perPage);
+  const cached = getCachedAnalytics(cacheKey);
+  if (cached) return cached;
+
   const allShipments: Shipment[] = [];
-  let currentPage = 1;
-  let lastPage = 1;
   let totalAvailable = 0;
 
-  // Fetch pages
-  while (currentPage <= lastPage && currentPage <= maxPages) {
-    const result = await getShipments({ page: currentPage, limit: perPage }, filter.apiKey);
-    if (!result.success) break;
+  // Fetch first page, then load the remaining pages concurrently in chunks.
+  const firstPageResult = await getShipments(
+    { page: 1, limit: perPage },
+    filter.apiKey
+  );
 
-    allShipments.push(...result.data.items);
-    lastPage = result.data.last_page;
-    totalAvailable = result.data.total;
-    currentPage++;
+  if (firstPageResult.success) {
+    allShipments.push(...firstPageResult.data.items);
+    totalAvailable = firstPageResult.data.total;
+
+    const lastPage = Math.min(firstPageResult.data.last_page, maxPages);
+    const remainingPages = Array.from(
+      { length: Math.max(lastPage - 1, 0) },
+      (_, i) => i + 2
+    );
+
+    for (let i = 0; i < remainingPages.length; i += SHIPMENTS_FETCH_CONCURRENCY) {
+      const chunk = remainingPages.slice(i, i + SHIPMENTS_FETCH_CONCURRENCY);
+      const results = await Promise.all(
+        chunk.map((page) => getShipments({ page, limit: perPage }, filter.apiKey))
+      );
+      for (const result of results) {
+        if (result.success) {
+          allShipments.push(...result.data.items);
+        }
+      }
+    }
   }
 
   // --- Filter by date range ---
@@ -299,7 +366,7 @@ export async function computeShipmentAnalytics(
     a.date.localeCompare(b.date)
   );
 
-  return {
+  const analytics: ShipmentAnalytics = {
     totalShipments: total,
     totalAvailable,
     loadedShipments: allShipments.length,
@@ -320,4 +387,7 @@ export async function computeShipmentAnalytics(
     statusBreakdown,
     recentShipments: filteredShipments.slice(0, 50),
   };
+
+  setCachedAnalytics(cacheKey, analytics);
+  return analytics;
 }
