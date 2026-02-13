@@ -1,12 +1,14 @@
 import "server-only";
 
 import { betterAuth } from "better-auth";
-import Database from "better-sqlite3";
+import { Pool } from "@neondatabase/serverless";
 
-const sqlite = new Database("sqlite.db");
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 export const auth = betterAuth({
-  database: sqlite,
+  database: pool,
   emailAndPassword: {
     enabled: true,
   },

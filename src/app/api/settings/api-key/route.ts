@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/shared/lib/auth-guard";
 import { validateApiKey } from "@/shared/api/nova-post-client";
-import { sqlite } from "@/shared/lib/db";
+import { pool } from "@/shared/lib/db";
 
 /**
  * PUT /api/settings/api-key
@@ -37,9 +37,10 @@ export async function PUT(request: NextRequest) {
 
   // Save to user record
   try {
-    sqlite
-      .prepare("UPDATE user SET novaPostApiKey = ? WHERE id = ?")
-      .run(trimmedKey, session.user.id);
+    await pool.query(
+      'UPDATE "user" SET "novaPostApiKey" = $1 WHERE "id" = $2',
+      [trimmedKey, session.user.id]
+    );
 
     return NextResponse.json({ success: true, message: "API ключ збережено" });
   } catch (error) {
@@ -62,9 +63,10 @@ export async function DELETE() {
   }
 
   try {
-    sqlite
-      .prepare("UPDATE user SET novaPostApiKey = NULL WHERE id = ?")
-      .run(session.user.id);
+    await pool.query(
+      'UPDATE "user" SET "novaPostApiKey" = NULL WHERE "id" = $1',
+      [session.user.id]
+    );
 
     return NextResponse.json({ success: true, message: "API ключ видалено" });
   } catch (error) {

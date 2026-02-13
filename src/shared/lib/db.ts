@@ -1,5 +1,14 @@
 import "server-only";
 
-import Database from "better-sqlite3";
+import { Pool } from "@neondatabase/serverless";
 
-export const sqlite = new Database("sqlite.db");
+/**
+ * Neon Serverless Postgres connection pool.
+ * Uses DATABASE_URL env var (provided by Vercel Neon integration).
+ *
+ * For local development, point DATABASE_URL to your Neon project's
+ * connection string (available in the Neon dashboard).
+ */
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
