@@ -28,6 +28,10 @@ interface ShipmentsCacheEntry {
 }
 
 const shipmentsCache = new Map<string, ShipmentsCacheEntry>();
+const inFlightShipmentsRequests = new Map<
+  string,
+  Promise<ApiResult<PaginatedResponse<Shipment>>>
+>();
 
 function buildShipmentsCacheKey(
   apiKey: string,
@@ -73,22 +77,36 @@ export async function getShipments(
   const cached = getCachedShipments(cacheKey);
   if (cached) return cached;
 
-  const queryParams: Record<string, string | string[] | number | undefined> = {
-    page,
-    limit,
-  };
+  const inFlight = inFlightShipmentsRequests.get(cacheKey);
+  if (inFlight) return inFlight;
 
-  if (ids?.length) queryParams.ids = ids;
-  if (numbers?.length) queryParams.numbers = numbers;
+  const requestPromise = (async () => {
+    const queryParams: Record<string, string | string[] | number | undefined> = {
+      page,
+      limit,
+    };
 
-  const result = await client(apiKey).get<PaginatedResponse<Shipment>>(
-    "/shipments",
-    queryParams
-  );
-  if (result.success) {
-    setCachedShipments(cacheKey, result);
+    if (ids?.length) queryParams.ids = ids;
+    if (numbers?.length) queryParams.numbers = numbers;
+
+    const result = await client(apiKey).get<PaginatedResponse<Shipment>>(
+      "/shipments",
+      queryParams
+    );
+
+    if (result.success) {
+      setCachedShipments(cacheKey, result);
+    }
+
+    return result;
+  })();
+
+  inFlightShipmentsRequests.set(cacheKey, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    inFlightShipmentsRequests.delete(cacheKey);
   }
-  return result;
 }
 
 /** Create a new shipment document */

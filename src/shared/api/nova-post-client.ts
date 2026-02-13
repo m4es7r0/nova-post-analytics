@@ -1,7 +1,7 @@
 import "server-only";
 
 import { env } from "@/shared/config/env";
-import type { ApiError, ApiResult } from "./types";
+import type { ApiResult } from "./types";
 
 // ============================================================
 // Nova Post API Client
@@ -396,10 +396,14 @@ export function getNovaPostClient(apiKey: string): NovaPostClient {
  * On success, caches the client (and its JWT) so the first
  * real request doesn't need to re-authenticate.
  */
-export async function validateApiKey(apiKey: string): Promise<boolean> {
+export type ApiKeyValidationResult =
+  | { isValid: true }
+  | { isValid: false; reason: "invalid" | "rate_limited" | "unavailable" };
+
+export async function validateApiKey(
+  apiKey: string
+): Promise<ApiKeyValidationResult> {
   try {
-    const client = getNovaPostClient(apiKey);
-    // Force a request that triggers auth — use a lightweight endpoint
     const response = await fetch(
       `${env.novaPostApiUrl}/clients/authorization?apiKey=${apiKey}`,
       {
@@ -408,20 +412,29 @@ export async function validateApiKey(apiKey: string): Promise<boolean> {
       }
     );
 
-    if (!response.ok) {
-      // Remove invalid key from cache
-      clientCache.delete(apiKey);
-      return false;
+    if (response.ok) {
+      // Warm up per-key client cache for subsequent requests.
+      void getNovaPostClient(apiKey);
+      return { isValid: true };
     }
 
-    // The client is now cached; the first real API call
-    // will trigger ensureAuth() which will fetch and cache the JWT.
-    // We don't pre-seed the JWT here to keep the class encapsulated.
-    void client; // client is cached via getNovaPostClient above
-    return true;
+    if (response.status === 429) {
+      return { isValid: false, reason: "rate_limited" };
+    }
+
+    if (response.status >= 500) {
+      return { isValid: false, reason: "unavailable" };
+    }
+
+    if (response.status === 401 || response.status === 403 || response.status === 400) {
+      clientCache.delete(apiKey);
+      return { isValid: false, reason: "invalid" };
+    }
+
+    return { isValid: false, reason: "unavailable" };
   } catch {
     clientCache.delete(apiKey);
-    return false;
+    return { isValid: false, reason: "unavailable" };
   }
 }
 

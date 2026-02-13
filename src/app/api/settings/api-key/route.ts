@@ -27,8 +27,28 @@ export async function PUT(request: NextRequest) {
   const trimmedKey = apiKey.trim();
 
   // Validate against Nova Post API
-  const isValid = await validateApiKey(trimmedKey);
-  if (!isValid) {
+  const validation = await validateApiKey(trimmedKey);
+  if (!validation.isValid) {
+    if (validation.reason === "rate_limited") {
+      return NextResponse.json(
+        {
+          error:
+            "Nova Post тимчасово обмежила кількість запитів. Спробуйте ще раз через 1-2 хвилини.",
+        },
+        { status: 429 }
+      );
+    }
+
+    if (validation.reason === "unavailable") {
+      return NextResponse.json(
+        {
+          error:
+            "Сервіс Nova Post тимчасово недоступний. Спробуйте зберегти ключ пізніше.",
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Невалідний API ключ. Перевірте правильність ключа." },
       { status: 400 }
