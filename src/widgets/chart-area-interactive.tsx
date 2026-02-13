@@ -117,16 +117,23 @@ export function ChartAreaInteractive({
 
   const totalShipments = filteredData.reduce((s, d) => s + d.shipments, 0);
   const totalDelivered = filteredData.reduce((s, d) => s + d.delivered, 0);
-  const totalDeclared = filteredData.reduce((s, d) => s + d.totalDeclaredValue, 0);
+  const totalDeclared = filteredData.reduce(
+    (s, d) => s + d.totalDeclaredValue,
+    0,
+  );
 
   return (
-    <Card className="@container/card">
+    <Card className="@container/card h-full">
       <CardHeader>
         <CardTitle>Аналітика по днях</CardTitle>
         <CardDescription>
           <span className="hidden @[540px]/card:block">
-            {totalShipments} відправлень, {totalDelivered} доставлено, оголошена вартість{" "}
-            {totalDeclared.toLocaleString("uk-UA", { minimumFractionDigits: 2 })} {currencyCode}
+            {totalShipments} відправлень, {totalDelivered} доставлено, оголошена
+            вартість{" "}
+            {totalDeclared.toLocaleString("uk-UA", {
+              minimumFractionDigits: 2,
+            })}{" "}
+            {currencyCode}
           </span>
           <span className="@[540px]/card:hidden">
             {totalShipments} відпр. / {totalDelivered} дост.
@@ -166,7 +173,7 @@ export function ChartAreaInteractive({
           </Select>
         </CardAction>
       </CardHeader>
-      <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
+      <CardContent className="px-2 pt-4 flex-1 sm:px-6 sm:pt-6">
         {filteredData.length === 0 ? (
           <div className="flex h-[250px] items-center justify-center text-muted-foreground">
             Немає даних за обраний період
@@ -174,7 +181,7 @@ export function ChartAreaInteractive({
         ) : (
           <ChartContainer
             config={chartConfig}
-            className="aspect-auto h-[250px] w-full"
+            className="aspect-auto h-full w-full"
           >
             <AreaChart data={filteredData}>
               <defs>
