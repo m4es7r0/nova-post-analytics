@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { uk } from "date-fns/locale";
 import type { DateRange } from "react-day-picker";
-import { IconCalendar, IconX } from "@tabler/icons-react";
+import { IconCalendar, IconLoader2, IconX } from "@tabler/icons-react";
 
 import { cn } from "@/shared/lib/utils";
 import { useIsMobile } from "@/shared/hooks/use-mobile";
@@ -40,6 +40,7 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
+  const [isPending, startTransition] = React.useTransition();
 
   const currentPath = basePath || pathname;
 
@@ -98,9 +99,11 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
       params.delete("to");
     }
 
-    router.push(`${currentPath}?${params.toString()}`);
-    setOpen(false);
-  }, [date, router, searchParams, currentPath]);
+    startTransition(() => {
+      router.push(`${currentPath}?${params.toString()}`);
+      setOpen(false);
+    });
+  }, [date, router, searchParams, currentPath, startTransition]);
 
   const resetToWeek = React.useCallback(() => {
     const week = getCurrentWeekRange();
@@ -108,8 +111,10 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("from", format(week.from, "yyyy-MM-dd"));
     params.set("to", format(clampToToday(week.to), "yyyy-MM-dd"));
-    router.push(`${currentPath}?${params.toString()}`);
-  }, [router, searchParams, setDate, currentPath]);
+    startTransition(() => {
+      router.push(`${currentPath}?${params.toString()}`);
+    });
+  }, [router, searchParams, setDate, currentPath, startTransition]);
 
   // Quick presets
   const setPreset = React.useCallback((days: number) => {
@@ -151,8 +156,13 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
             variant={isCustomFilter ? "default" : "ghost"}
             size={isMobile ? "sm" : "default"}
             className="justify-start text-left font-normal"
+            disabled={isPending}
           >
-            <IconCalendar className="size-4 shrink-0" />
+            {isPending ? (
+              <IconLoader2 className="size-4 shrink-0 animate-spin" />
+            ) : (
+              <IconCalendar className="size-4 shrink-0" />
+            )}
             <span className="truncate">{label}</span>
           </Button>
         </PopoverTrigger>
@@ -169,6 +179,7 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={setPresetWeek}
+                disabled={isPending}
               >
                 Тиждень
               </Button>
@@ -177,6 +188,7 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => setPreset(14)}
+                disabled={isPending}
               >
                 14 днів
               </Button>
@@ -185,6 +197,7 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => setPreset(30)}
+                disabled={isPending}
               >
                 30 днів
               </Button>
@@ -193,6 +206,7 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => setPreset(90)}
+                disabled={isPending}
               >
                 3 місяці
               </Button>
@@ -201,6 +215,7 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => setPreset(180)}
+                disabled={isPending}
               >
                 6 місяців
               </Button>
@@ -209,6 +224,7 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
                 size="sm"
                 className="h-7 text-xs"
                 onClick={() => setPreset(365)}
+                disabled={isPending}
               >
                 Рік
               </Button>
@@ -230,8 +246,15 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
                   ? `${Math.ceil((date.to.getTime() - date.from.getTime()) / (1000 * 60 * 60 * 24))} днів`
                   : "Оберіть діапазон дат"}
               </p>
-              <Button size="sm" onClick={applyFilter} disabled={!date?.from}>
-                Застосувати
+              <Button size="sm" onClick={applyFilter} disabled={!date?.from || isPending}>
+                {isPending ? (
+                  <>
+                    <IconLoader2 className="mr-1 size-4 animate-spin" />
+                    Застосовую...
+                  </>
+                ) : (
+                  "Застосувати"
+                )}
               </Button>
             </div>
           </div>
@@ -245,8 +268,13 @@ export function DateRangeFilter({ className, basePath }: DateRangeFilterProps) {
           className="size-8 shrink-0"
           onClick={resetToWeek}
           title="Скинути на поточний тиждень"
+          disabled={isPending}
         >
-          <IconX className="size-4" />
+          {isPending ? (
+            <IconLoader2 className="size-4 animate-spin" />
+          ) : (
+            <IconX className="size-4" />
+          )}
           <span className="sr-only">Скинути</span>
         </Button>
       )}

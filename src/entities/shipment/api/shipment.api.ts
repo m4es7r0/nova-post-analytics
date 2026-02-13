@@ -19,12 +19,59 @@ import type {
 
 const client = (apiKey: string) => getNovaPostClient(apiKey);
 
+const SHIPMENTS_CACHE_TTL_MS = 60 * 1000;
+const MAX_SHIPMENTS_CACHE_ENTRIES = 200;
+
+interface ShipmentsCacheEntry {
+  expiresAt: number;
+  value: ApiResult<PaginatedResponse<Shipment>>;
+}
+
+const shipmentsCache = new Map<string, ShipmentsCacheEntry>();
+
+function buildShipmentsCacheKey(
+  apiKey: string,
+  params: GetShipmentsParams
+): string {
+  const idsPart = params.ids?.join(",") || "";
+  const numbersPart = params.numbers?.join(",") || "";
+  const pagePart = String(params.page ?? 1);
+  const limitPart = String(params.limit ?? 15);
+  return `${apiKey}|${pagePart}|${limitPart}|${idsPart}|${numbersPart}`;
+}
+
+function getCachedShipments(
+  key: string
+): ApiResult<PaginatedResponse<Shipment>> | null {
+  const entry = shipmentsCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt < Date.now()) {
+    shipmentsCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCachedShipments(
+  key: string,
+  value: ApiResult<PaginatedResponse<Shipment>>
+): void {
+  shipmentsCache.set(key, { value, expiresAt: Date.now() + SHIPMENTS_CACHE_TTL_MS });
+  if (shipmentsCache.size > MAX_SHIPMENTS_CACHE_ENTRIES) {
+    const oldestKey = shipmentsCache.keys().next().value as string | undefined;
+    if (oldestKey) shipmentsCache.delete(oldestKey);
+  }
+}
+
 /** Fetch shipments list with pagination and optional filters */
 export async function getShipments(
   params: GetShipmentsParams = {},
   apiKey: string
 ): Promise<ApiResult<PaginatedResponse<Shipment>>> {
   const { ids, numbers, page = 1, limit = 15 } = params;
+  const cacheKey = buildShipmentsCacheKey(apiKey, { ids, numbers, page, limit });
+  const cached = getCachedShipments(cacheKey);
+  if (cached) return cached;
 
   const queryParams: Record<string, string | string[] | number | undefined> = {
     page,
@@ -34,7 +81,14 @@ export async function getShipments(
   if (ids?.length) queryParams.ids = ids;
   if (numbers?.length) queryParams.numbers = numbers;
 
-  return client(apiKey).get<PaginatedResponse<Shipment>>("/shipments", queryParams);
+  const result = await client(apiKey).get<PaginatedResponse<Shipment>>(
+    "/shipments",
+    queryParams
+  );
+  if (result.success) {
+    setCachedShipments(cacheKey, result);
+  }
+  return result;
 }
 
 /** Create a new shipment document */

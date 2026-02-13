@@ -48,22 +48,36 @@ export default async function ShipmentsPage({ searchParams }: PageProps) {
 
   // --- Fetch ALL shipments (up to maxPages to avoid excessive calls) ---
   const maxPages = 20;
+  const fetchConcurrency = 4;
   const fetchPerPage = 100;
   const allShipments: Shipment[] = [];
-  let currentPage = 1;
-  let lastApiPage = 1;
   let totalAvailable = 0;
 
-  while (currentPage <= lastApiPage && currentPage <= maxPages) {
-    const result = await getShipments(
-      { page: currentPage, limit: fetchPerPage },
-      apiKey,
+  // Fetch first page, then load remaining pages concurrently in chunks.
+  const firstPage = await getShipments({ page: 1, limit: fetchPerPage }, apiKey);
+  if (firstPage.success) {
+    allShipments.push(...firstPage.data.items);
+    totalAvailable = firstPage.data.total;
+
+    const lastApiPage = Math.min(firstPage.data.last_page, maxPages);
+    const remainingPages = Array.from(
+      { length: Math.max(lastApiPage - 1, 0) },
+      (_, i) => i + 2,
     );
-    if (!result.success) break;
-    allShipments.push(...result.data.items);
-    lastApiPage = result.data.last_page;
-    totalAvailable = result.data.total;
-    currentPage++;
+
+    for (let i = 0; i < remainingPages.length; i += fetchConcurrency) {
+      const chunk = remainingPages.slice(i, i + fetchConcurrency);
+      const results = await Promise.all(
+        chunk.map((pageNum) =>
+          getShipments({ page: pageNum, limit: fetchPerPage }, apiKey),
+        ),
+      );
+      for (const result of results) {
+        if (result.success) {
+          allShipments.push(...result.data.items);
+        }
+      }
+    }
   }
 
   // --- Filter by date range ---

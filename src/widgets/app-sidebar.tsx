@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   IconChartBar,
   IconDashboard,
-  IconHelp,
   IconMapPin,
   IconPackage,
-  IconSearch,
   IconSettings,
   IconTruck,
   IconTruckDelivery,
@@ -17,7 +16,6 @@ import {
 import { NavMain } from "@/widgets/nav-main";
 import { NavSecondary } from "@/widgets/nav-secondary";
 import { NavUser } from "@/widgets/nav-user";
-import { ThemeToggle } from "@/widgets/theme-toggle";
 import {
   Sidebar,
   SidebarContent,
@@ -90,12 +88,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
-              <a href="/dashboard">
+              <Link href="/dashboard">
                 <IconPackage className="!size-5" />
                 <span className="text-base font-semibold">
                   Nova Post Analytics
                 </span>
-              </a>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
