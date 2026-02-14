@@ -29,6 +29,16 @@ export async function PUT(request: NextRequest) {
   // Validate against Nova Post API
   const validation = await validateApiKey(trimmedKey);
   if (!validation.isValid) {
+    if (validation.reason === "expired") {
+      return NextResponse.json(
+        {
+          error:
+            "Термін дії API ключа Nova Post закінчився. Створіть новий ключ у бізнес-кабінеті та збережіть його тут.",
+        },
+        { status: 422 }
+      );
+    }
+
     if (validation.reason === "rate_limited") {
       return NextResponse.json(
         {

@@ -398,7 +398,10 @@ export function getNovaPostClient(apiKey: string): NovaPostClient {
  */
 export type ApiKeyValidationResult =
   | { isValid: true }
-  | { isValid: false; reason: "invalid" | "rate_limited" | "unavailable" };
+  | {
+      isValid: false;
+      reason: "invalid" | "expired" | "rate_limited" | "unavailable";
+    };
 
 export async function validateApiKey(
   apiKey: string
@@ -426,7 +429,34 @@ export async function validateApiKey(
       return { isValid: false, reason: "unavailable" };
     }
 
-    if (response.status === 401 || response.status === 403 || response.status === 400) {
+    if (response.status === 422) {
+      // Nova Post may return 422 with "API key expired" payload.
+      const contentType = response.headers.get("content-type") || "";
+      let responseText = "";
+      if (contentType.includes("application/json")) {
+        const data = (await response.json()) as {
+          message?: string;
+          errors?: { errorMessage?: string };
+        };
+        responseText = `${data.message || ""} ${data.errors?.errorMessage || ""}`
+          .trim()
+          .toLowerCase();
+      } else {
+        responseText = (await response.text()).trim().toLowerCase();
+      }
+
+      clientCache.delete(apiKey);
+      if (responseText.includes("expired")) {
+        return { isValid: false, reason: "expired" };
+      }
+      return { isValid: false, reason: "invalid" };
+    }
+
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      response.status === 400
+    ) {
       clientCache.delete(apiKey);
       return { isValid: false, reason: "invalid" };
     }
